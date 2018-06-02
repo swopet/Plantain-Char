@@ -12,7 +12,7 @@
 #include <Winsock2.h>
 #include <string.h>
 
-#define SCREENCAP false
+#define SCREENCAP true
 #define PORT 9400
 #define FRAMES 3592
 sf::RenderWindow * window;
@@ -107,19 +107,16 @@ void display(){
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     
-    //EDIT LIGHTING HERE
-    glLightf(GL_LIGHT0, GL_SPOT_CUTOFF, 45.0);
-    GLfloat spot_direction[] = {0.0, 0.0, -1.0 };
-    GLfloat light_position[] = {0.0, 0.0, 0.0, 1.0};
-    glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, spot_direction);
-    glLightfv(GL_LIGHT0, GL_POSITION, light_position);
-    glEnable(GL_LIGHT0);
+    
     
     //MODIFY THE CAMERA HERE
     glRotatef(cam_rotation,0.0,1.0,0.0);
     glTranslatef(0.0,-cam_pos,0.0);
     
-    
+    //EDIT LIGHTING HERE
+    GLfloat light_position[] = {0.0, cam_pos, 0.0, 1.0};
+    glLightfv(GL_LIGHT0, GL_POSITION, light_position);
+    glEnable(GL_LIGHT0);
     
     //DISPLAY STUFF HERE
     
@@ -232,7 +229,7 @@ int main(int argc, char **argv) {
             screenshot_count++;
         }
 #else
-    	Sleep(50);
+    	
 #endif
     	window->display();
     }
