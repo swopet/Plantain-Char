@@ -12,27 +12,33 @@
 #include <SFML/Graphics.hpp>
 #include <Winsock2.h>
 #include <string.h>
+#include <algorithm>
 
-#define SCREENCAP false
+#define SCREENCAP 0
+#define MIPMAP false
+#define SCREEN_SIZE 1.0
 #define PORT 9400
 #define FRAMES 3592
 #define SQRT_3 1.73205080757
 #define SQRT_2 1.41421356237
+#define HEX_RADIUS 3.0
 sf::RenderWindow * window;
 float low_val, mid_val, high_val;
 double cam_rotate_speed = 0.5;
 double cam_move_speed = 0.01;
-sf::Vector3f cam_pos(0,0,0);
+sf::Vector3f cam_pos(0,-5.0,40.0);
 double cam_rotation = 0.0;
-int screen_width = 1280;
-int screen_height = 720;
+int screen_width;
+int screen_height;
 double freq_vals[FRAMES][3];
 bool program_done = false;
 int frame;
 sf::Texture floor_texture;
 
-GLfloat cube_top_face[] = {0.0,1.0,0.0,-0.5,0.5,-0.5,0.0,1.0,0.0,-0.5,0.5,0.5,0.0,1.0,0.0,0.5,0.5,0.5,0.0,1.0,0.0,0.5,0.5,-0.5};
-GLuint cube_indices[] = {0,1,2,3};
+const GLfloat cube_top_face[] = {0.0,1.0,0.0,-0.5,0.5,-0.5,0.0,1.0,0.0,-0.5,0.5,0.5,0.0,1.0,0.0,0.5,0.5,0.5,0.0,1.0,0.0,0.5,0.5,-0.5};
+const GLuint cube_indices[] = {0,1,2,3};
+//beat almost exactly every 42 frames, but this kinda needs to be hard-coded
+const int cube_triggers[] = { 380, 2, 464, 3, 548, 3, 590, 4, 632, 4, 674, 4, 716, 4, 758, 4, 800, 4, 842, 7, 884, 7, 926, 7, 968, 7, 1010, 7, 1052, 7, 1094, 7, 1036, 7, 1078, 7, 1120, 7, 1162, 7, 1204, 7};
 
 void multiply_vector(GLfloat * vec, GLfloat * matrix){
 	sf::Vector3f buffer;
@@ -168,13 +174,11 @@ public:
         radius = new_radius;
         num_vertices = (pow(2,recursion_level)+1)*(pow(2,recursion_level)+2)/2;
         num_triangles = pow(4, recursion_level);
-        printf("Predicted Triangles: %d\n",num_triangles);
-        printf("Predicted Vertices: %d\n",num_vertices);
         GLfloat * vertices = (GLfloat *)malloc(8*num_vertices*sizeof(GLfloat));
         GLuint * indices = (GLuint *)malloc(3*num_triangles*sizeof(GLuint));
         //point 0
-        vertices[0] = 0.0;
-        vertices[1] = 1.0;
+        vertices[0] = 0.5;
+        vertices[1] = 0.5;
         vertices[2] = 0.0;
         vertices[3] = 1.0;
         vertices[4] = 0.0;
@@ -182,8 +186,8 @@ public:
         vertices[6] = 0.0;
         vertices[7] = 0.0;
         //point 1
-        vertices[8] = 0.5;
-        vertices[9] = 1.0;
+        vertices[8] = 0.5+0.25*cos(M_PI/(double)divisions);
+        vertices[9] = 0.5;
         vertices[10] = 0.0;
         vertices[11] = 1.0;
         vertices[12] = 0.0;
@@ -191,8 +195,8 @@ public:
         vertices[14] = 0.0;
         vertices[15] = 0.0;
         //point 2
-        vertices[16] = 0.5;
-        vertices[17] = 1.0-0.5*sin(M_PI/(double)divisions);
+        vertices[16] = 0.5+0.25*cos(M_PI/(double)divisions);
+        vertices[17] = 0.5-0.25*sin(M_PI/(double)divisions);
         vertices[18] = 0.0;
         vertices[19] = 1.0;
         vertices[20] = 0.0;
@@ -238,8 +242,6 @@ public:
                 current_tri_ind++;
             }
         }
-        printf("Triangles: %d\n",current_tri_ind);
-        printf("Vertices: %d\n",current_vert_ind);
         base_vertices = vertices;
         curr_vertices = (GLfloat *)malloc(8*num_vertices*sizeof(GLfloat));
         for (int i = 0; i < num_vertices; i++){
@@ -250,7 +252,8 @@ public:
         mesh_indices = indices;
     }
     void draw(){
-        
+        glColor3f(1.0,1.0,1.0);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glEnable(GL_TEXTURE_2D);
         sf::Texture::bind(&floor_texture);
         glInterleavedArrays(GL_T2F_N3F_V3F,0,curr_vertices);
@@ -270,6 +273,7 @@ public:
         burst_level = new_burst;
     }
     void update(){
+        //burst_level = sin(double(frame)*M_PI/280.0);
         for (int i = 0; i < num_vertices; i++){
             for (int j = 2; j < 8; j++){
                 curr_vertices[i*8+j] = base_vertices[i*8+j];
@@ -277,14 +281,13 @@ public:
             if (burst_level > 0.0){
                 sf::Vector3f diff_vec(base_vertices[i*8+5],base_vertices[i*8+6],base_vertices[i*8+7]);
                 double diff = sqrt(diff_vec.x*diff_vec.x+diff_vec.y*diff_vec.y+diff_vec.z*diff_vec.z);
-                double rot_val = 2.0*burst_level - diff;
+                double rot_val = (radius*0.66)*burst_level - diff;
                 if (rot_val > 0.0){
                     glPushMatrix();
                     glLoadIdentity();
-                    glTranslatef(0.0,burst_level*cos(diff*M_PI/4.0),0.0);
-                    glTranslatef(2.0,-2.0,0.0);
-                    glRotatef(-30.0*rot_val,0.0,0.0,1.0);
-                    glTranslatef(-2.0,2.0,0.0);
+                    glTranslatef(rot_val,-rot_val/3.0,0.0);
+                    glRotatef(-45.0*rot_val,0.0,0.0,1.0);
+                    glTranslatef(-rot_val,rot_val/3.0,0.0);
                     GLfloat curr_matrix[16];
                     glGetFloatv(GL_MODELVIEW_MATRIX,curr_matrix);
                     multiply_vector(&curr_vertices[i*8+5],curr_matrix);
@@ -293,8 +296,8 @@ public:
                 }
             }
             
-            curr_vertices[i*8] = base_vertices[i*8] + 0.5 + 0.5*cos((double)frame*M_PI/140.0);
-            curr_vertices[i*8+1] = base_vertices[i*8+1] - 0.4 + 0.4*sin((double)frame*M_PI/70.0);
+            curr_vertices[i*8] = base_vertices[i*8] + 0.1*sin((double)frame*M_PI/980.0) + 0.1*cos((double)frame*M_PI/560.0);
+            curr_vertices[i*8+1] = base_vertices[i*8+1] + 0.1*sin((double)frame*M_PI/420.0) + 0.1*cos((double)frame*M_PI/1540.0);
         }
         burst_level = burst_level - 0.1;
         //correct normals
@@ -304,10 +307,11 @@ public:
 class HexFloor {
 private:
     int num_layers;
-    double radius = 4.0;
+    double radius = HEX_RADIUS;
     std::map<std::pair<int,int>,KaleidofloorTile *> ** layers;
+    float internal_t = 0;
 public:
-    void init(int new_num_layers = 5){
+    void init(int new_num_layers = 7){
         num_layers = new_num_layers;
         layers = (std::map<std::pair<int,int>,KaleidofloorTile *> **)malloc(num_layers*sizeof(std::map<std::pair<int,int>,KaleidofloorTile *> *));
         for (int i = 0; i < num_layers; i++){
@@ -320,28 +324,54 @@ public:
                 int layer_num = abs(x) >= abs(y) ? (abs(x) >= abs(z) ? abs(x) : abs(z)) : (abs(y) >= abs(z) ? abs(y) : abs(z));
                 if (layer_num < num_layers){
                     KaleidofloorTile * new_tile = new KaleidofloorTile();
-                    new_tile->init(6,radius,4);
+                    new_tile->init(6,radius,3);
                     //assign the new tile to the coordinate in the appropriate layer
                     (*layers[layer_num])[std::pair<int,int>(x,y)] = new_tile;
                 }
             }
         }
     }
+    std::map<std::pair<int,int>,KaleidofloorTile *> ** get_layers(){
+        return layers;
+    }
     void update(){
-        
+        for (int i = 0; i < num_layers; i++){
+            for (std::map<std::pair<int,int>,KaleidofloorTile *>::iterator iter = layers[i]->begin(); iter != layers[i]->end(); iter++){
+                (*iter).second->update();
+            }
+        }
+        internal_t += freq_vals[frame][0];
     }
     void draw(){
+        glPushMatrix();
+        glTranslatef(0.0,-18.0,0.0);
+        int closest_frame;
+        int trigger_frame;
         for (int i = 0; i < num_layers; i++){
+            glPushMatrix();
+            if (frame < 380) glTranslatef(0.0,(2.0*(sin(frame*M_PI/380.0))*sin((i*30 + internal_t)*M_PI/200.0)),0.0);
+            closest_frame = 42;
+            for (int trig = 0; trig < 21; trig++){
+                if (i < cube_triggers[trig*2+1]){
+                    trigger_frame = cube_triggers[trig*2] + i*63/cube_triggers[trig*2+1];
+                    if (abs(trigger_frame-frame) < abs(closest_frame)){
+                        closest_frame = trigger_frame-frame;
+                    }
+                }
+            }
             for (std::map<std::pair<int,int>,KaleidofloorTile *>::iterator iter = layers[i]->begin(); iter != layers[i]->end(); iter++){
                 double x = (double)((*iter).first.first);
                 double z = (double)((*iter).first.second);
                 glPushMatrix();
                 //fancy math, don't question it. Trust me, these are the right coordinates yo.
                 glTranslatef((x+z/2.0)*radius*SQRT_3,0.0,z*3.0*radius/2.0);
+                (*iter).second->setBurstLevel(cos((double)closest_frame*M_PI/40.0));
                 (*iter).second->draw();
                 glPopMatrix();
             }
+            glPopMatrix();
         }
+        glPopMatrix();
     }
 };
 
@@ -400,25 +430,45 @@ public:
 HexFloor hex_floor;
 Kaleidofloor kaleido_floor;
 
+
+
 class CubeController {
 private:
-    sf::Vector3f target_pos;
+    sf::Vector3f final_target_pos;
     sf::Vector3f start_pos;
+    sf::Vector3f inter_pos;
     int start_frame;
+    int inter_frame;
     int end_frame;
     int layer;
+    double inter_angle;
+    double end_angle;
+    double bump_ratio = 0.0;
 public:
     CubeController(){
-        target_pos = sf::Vector3f(0,0,0);
+        final_target_pos = sf::Vector3f(0,0,0);
+        inter_pos = sf::Vector3f(0,0,0);
         start_pos = sf::Vector3f(0,0,0);
         start_frame = 0;
-        end_frame = 1;
+        inter_frame = 1;
+        end_frame = 2;
     }
     CubeController(sf::Vector3f new_target_pos){
-        target_pos = new_target_pos;
-        start_pos = sf::Vector3f(new_target_pos.x,-10.0,new_target_pos.z);
-        start_frame = 0;
-        end_frame = 100;
+        final_target_pos = new_target_pos;
+    }
+    double get_dist(){
+        return sqrt(final_target_pos.x*final_target_pos.x+final_target_pos.y*final_target_pos.y+final_target_pos.z*final_target_pos.z);
+    }
+    void set_start_pos(sf::Vector3f new_start_pos){
+        start_pos = new_start_pos;
+        inter_pos = sf::Vector3f(start_pos.x,start_pos.y+12.0,start_pos.z);
+        inter_angle = atan2(inter_pos.z,inter_pos.x);
+        end_angle = atan2(final_target_pos.z,final_target_pos.x) + 2.0*M_PI;
+    }
+    void set_start_frame(int new_start_frame){
+        start_frame = new_start_frame;
+        inter_frame = new_start_frame + 132.0;
+        end_frame = inter_frame + 132.0;
     }
     void set_frames(int new_layer){
         layer = new_layer;
@@ -426,18 +476,73 @@ public:
         end_frame = layer*14+140 + rand()%14;
     }
     void draw(){
+        float ratio = 0.0;
+        float cos_ratio = 0.0;
+        float total_ratio = 0.0;
+        sf::Vector3f curr_target;
+        sf::Vector3f curr_start;
+        sf::Vector3f pos;
+        int curr_frame;
+        int total_frames;
         if (frame < start_frame){
-            
+            return;
+        }
+        else if (frame < inter_frame){
+            curr_frame = frame - start_frame;
+            total_frames = inter_frame - start_frame;
+            curr_start = start_pos;
+            curr_target = inter_pos;
+            ratio = (float)(curr_frame)/(float)(total_frames);
+            cos_ratio = (0.5+0.5*cos((ratio-1.0)*M_PI));
+            //how far along this path is it?
+            pos = curr_start + ratio*(curr_target-curr_start);
         }
         else if (frame < end_frame){
-            float ratio = (float)(frame-start_frame)/(float)(end_frame-start_frame);
+            curr_frame = frame - inter_frame;
+            total_frames = end_frame - inter_frame;
+            curr_start = inter_pos;
+            curr_target = final_target_pos;
+            ratio = (float)(curr_frame)/(float)(total_frames);
+            cos_ratio = (0.5+0.5*cos((ratio-1.0)*M_PI));
+            float start_dist = sqrt(inter_pos.x*inter_pos.x+inter_pos.z*inter_pos.z);
+            float end_dist = sqrt(final_target_pos.x*final_target_pos.x+final_target_pos.z*final_target_pos.z);
+            float curr_dist = start_dist + cos_ratio*(end_dist-start_dist);
+            curr_dist = curr_dist + 2.0*(1.0+cos((cos_ratio-0.5)*M_PI*2.0));
+            float curr_angle = inter_angle + cos_ratio*(end_angle-inter_angle);
+            float curr_y = inter_pos.y + ratio*(final_target_pos.y-inter_pos.y);
+            pos = sf::Vector3f(curr_dist*cos(curr_angle),curr_y+exp(final_target_pos.y/3.0)*(1.0+cos((ratio-0.5)*M_PI*2.0)),curr_dist*sin(curr_angle));
+        }
+        if (frame >= end_frame){
+            pos = final_target_pos;
+            total_ratio = 0.0;
+        }
+        else {
+            total_ratio = (float)(frame-start_frame)/(float)(end_frame-start_frame);
+        }
+        glPushMatrix();
+        double dist = sqrt(pos.x*pos.x+pos.y*pos.y+pos.z*pos.z);
+        //double add_bump_ratio = (dist == 0) ? 0.0 : (freq_vals[frame][0]/(32.0+dist*dist*dist))/dist;
+        //bump_ratio = bump_ratio + add_bump_ratio;
+        glTranslatef(pos.x*(1.0+bump_ratio),pos.y*(1.0+bump_ratio),pos.z*(1.0+bump_ratio));
+        bump_ratio = bump_ratio * 0.5;
+        float val = pos.x+pos.y-pos.z;
+        
+        GLfloat color[] = {freq_vals[frame][2]/128.0,0.5-0.5*cos((frame+val)*M_PI/30.0),1.0-freq_vals[frame][2]/128.0};
+        glRotatef(360.0*total_ratio*total_ratio,1.0,1.0,1.0);
+        float scale_val = 1.0-freq_vals[frame][1]/256.0;
+        glScalef(scale_val,scale_val,scale_val);
+        draw_1x1_cube(true,color);
+        glPopMatrix();
+        
+        /*else if (frame < end_frame){
+            float ratio = (float)(frame-inter_frame)/(float)(end_frame-inter_frame);
             float wave_ratio = 0.5 - 0.5 * cos(ratio*M_PI);
             sf::Vector3f pos;
-            pos = start_pos + ratio*(target_pos-start_pos);
+            pos = inter_pos + ratio*(final_target_pos-inter_pos);
             glPushMatrix();
             glRotatef(wave_ratio*720.0*(layer%2 ? -1.0 : 1.0),0.0,1.0,0.0);
             glTranslatef(pos.x*wave_ratio,pos.y,pos.z*wave_ratio);
-            glTranslatef(wave_ratio*0.5*cos((target_pos.z*3.5+frame)*M_PI/28.0),wave_ratio*0.5*sin((sqrt(target_pos.x*target_pos.x+target_pos.z*target_pos.z)+frame+target_pos.y)*M_PI/28.0),0.0);
+            glTranslatef(wave_ratio*0.5*cos((final_target_pos.z*3.5+frame)*M_PI/28.0),wave_ratio*0.5*sin((sqrt(final_target_pos.x*final_target_pos.x+final_target_pos.z*target_pos.z)+frame+target_pos.y)*M_PI/28.0),0.0);
             
             glScalef(0.4+ratio*0.2,0.4+ratio*0.2,0.4+ratio*0.2);
             double dist = sqrt(target_pos.x*target_pos.x+target_pos.y*target_pos.y+target_pos.z*target_pos.z);
@@ -465,11 +570,40 @@ public:
             GLfloat color[] = {0.5+0.5*dist_val,1.0-abs(dist_val),1.0};
             draw_1x1_cube(true,color);
             glPopMatrix();
-        }
+            */
     }
 };
 
+bool cube_comp(CubeController * a, CubeController *b){
+    return (a->get_dist() > b->get_dist());
+}
+
 std::vector<CubeController *> cubes;
+
+
+void link_floor_and_cubes(){
+    std::vector<CubeController *>::iterator cube_iter = cubes.begin();
+    std::map<std::pair<int,int>,KaleidofloorTile *> ** layers = hex_floor.get_layers();
+    int count = 0;
+    for (int i = 0; i < 21; i++){ //go through that thing above and assign triggers to all the CubeController instances
+        printf("%d\n",i);
+        int trigger_frame = cube_triggers[i*2];
+        int num_layers = cube_triggers[i*2+1];
+        for (int layer = 0; layer < num_layers; layer++){
+            for (std::map<std::pair<int,int>,KaleidofloorTile *>::iterator layer_iter = layers[layer]->begin(); layer_iter != layers[layer]->end(); layer_iter++){
+                double x = (double)((*layer_iter).first.first);
+                double z = (double)((*layer_iter).first.second);
+                sf::Vector3f start_pos((x+z/2.0)*HEX_RADIUS*SQRT_3,-20.0,z*3.0*HEX_RADIUS/2.0);
+                
+                (*cube_iter)->set_start_pos(start_pos);
+                (*cube_iter)->set_start_frame(trigger_frame+layer*63/num_layers-28);
+                cube_iter++;
+                count++;
+            }
+        }
+    }
+    printf("%d\n",count);
+}
 
 void draw_cubes(){
     for (std::vector<CubeController *>::iterator iter = cubes.begin(); iter != cubes.end(); iter++){
@@ -479,6 +613,7 @@ void draw_cubes(){
 
 void assign_cubes(double radius = 7.5){
     std::vector<CubeController *> layer;
+    int num_cubes = 0;
     int layer_num = 0;
     int rad = (int)radius;
     for (int y = rad; y >= -rad; y--){
@@ -487,6 +622,7 @@ void assign_cubes(double radius = 7.5){
                 double dist = sqrt(x*x+y*y+z*z);
                 if (dist <= radius){
                     CubeController * new_cube = new CubeController(sf::Vector3f(x,y,z));
+                    num_cubes++;
                     layer.push_back(new_cube);
                     new_cube->set_frames(layer_num);
                 }
@@ -499,6 +635,8 @@ void assign_cubes(double radius = 7.5){
         }
         layer_num++;
     }
+    std::make_heap(cubes.begin(),cubes.end(),cube_comp);
+    printf("num cubes: %d\n",num_cubes);
 }
 
 double rot_val=0.0;
@@ -679,10 +817,11 @@ void display(){
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
     
+    //gluLookAt(cam_pos.x,cam_pos.y,cam_pos.z,0.0,0.0,0.0,0.0,1.0,0.0);
     
     
     //MODIFY THE CAMERA HERE
-    glRotatef(cam_rotation,0.0,1.0,0.0);
+    //glRotatef(cam_rotation,0.0,1.0,0.0);
     glTranslatef(-cam_pos.x,-cam_pos.y,-cam_pos.z);
     /*if (frame < 240){
         cam_pos.z += 24.0/240.0;
@@ -695,7 +834,7 @@ void display(){
     GLfloat light_ambient[4];
     GLfloat light_diffuse[] = {light_magnitude,light_magnitude,light_magnitude,1.0};
     GLfloat light_specular[] = {light_magnitude,light_magnitude,light_magnitude,1.0};
-    GLfloat light_position[] = {0.0, 0.0, 0.0, 1.0};
+    GLfloat light_position[] = {1.0, 1.0, 1.0, 0.0};
     glLightfv(GL_LIGHT0, GL_AMBIENT, light_ambient);
     glLightfv(GL_LIGHT0, GL_DIFFUSE, light_diffuse);
     glLightfv(GL_LIGHT0, GL_SPECULAR, light_specular);
@@ -703,13 +842,10 @@ void display(){
     glEnable(GL_LIGHT0);
     
     //DISPLAY STUFF HERE
-    glTranslatef(0.0,0.0,-48.0);
-    glTranslatef(0.0,-12.0,0.0);
-    glRotatef(15.0,1.0,0.0,0.0);
     hex_floor.draw();
     //kaleido_floor.draw();
     //glRotatef(frame,1.0,1.0,1.0);
-    //draw_cubes();
+    draw_cubes();
     
     //GLfloat color[] = {1.0,1.0,1.0};
 	//draw_1x1_cube(true,color);
@@ -725,7 +861,15 @@ void update(){
 }
 
 void init(){
-    floor_texture.loadFromFile("floor.png");
+    floor_texture.loadFromFile("floor2.png");
+#if MIPMAP == true
+    if (floor_texture.generateMipmap()){
+        printf("generated mipmap\n");
+    }
+    else {
+        printf("failed to generate mipmap\n");
+    }    
+#endif
 	std::ifstream f("vals.txt");
     std::string in;
     int curr_val = 0;
@@ -749,7 +893,7 @@ void init(){
         }
     }
     glClearColor(0.0,0.0,0.0,1.0);
-	glViewport(0.0,0.0,1280,720);
+	glViewport(0.0,0.0,screen_width,screen_height);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_CCW);
@@ -762,20 +906,21 @@ void init(){
 	glEnable(GL_NORMALIZE);
     hex_floor.init();
     //kaleido_floor.init();
-    //assign_cubes();
+    assign_cubes();
+    link_floor_and_cubes();
 }
 
 int main(int argc, char **argv) {
+    screen_height = 720*SCREEN_SIZE;
+    screen_width = 1280*SCREEN_SIZE;
     sf::ContextSettings settings;
 	settings.depthBits = 24;
 	settings.stencilBits = 0;
 	settings.antialiasingLevel = 8;
 	settings.majorVersion = 3;
 	settings.minorVersion = 0;
-	window = new sf::RenderWindow(sf::VideoMode(1280,720),"Plantain Char",sf::Style::Default, settings);
-#ifdef SCREENCAP
+	window = new sf::RenderWindow(sf::VideoMode(screen_width,screen_height),"Plantain Char",sf::Style::Default, settings);
 	int screenshot_count = 0;
-#endif
     window->setVerticalSyncEnabled(true);
 
     // activate the window
@@ -804,22 +949,20 @@ int main(int argc, char **argv) {
         }
         update();
     	display();
-#if SCREENCAP == true
-        if (screenshot_count%10==0) printf("frame %d\n",screenshot_count);
-        sf::Vector2u windowSize = window->getSize();
-        sf::Texture new_tex;
-        new_tex.create(windowSize.x,windowSize.y);
-        new_tex.update(*window);
-        sf::Image screenshot = new_tex.copyToImage();
-        std::stringstream file_name;
-        file_name << "screenshots/frame_" << screenshot_count << ".png";
-        if (screenshot.saveToFile(file_name.str())){
-            screenshot_count++;
-            
+        if (screenshot_count < SCREENCAP){
+            if (screenshot_count%10==0) printf("frame %d\n",screenshot_count);
+            sf::Vector2u windowSize = window->getSize();
+            sf::Texture new_tex;
+            new_tex.create(windowSize.x,windowSize.y);
+            new_tex.update(*window);
+            sf::Image screenshot = new_tex.copyToImage();
+            std::stringstream file_name;
+            file_name << "screenshots/frame_" << screenshot_count << ".png";
+            if (screenshot.saveToFile(file_name.str())){
+                screenshot_count++;
+                
+            }
         }
-#else
-    	
-#endif
     	window->display();
     }
 
