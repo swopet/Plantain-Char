@@ -23,11 +23,12 @@
 #define SQRT_2 1.41421356237
 #define HEX_RADIUS 3.0
 sf::RenderWindow * window;
+sf::RenderTexture * kaleido_source_texture;
 float low_val, mid_val, high_val;
-double cam_rotate_speed = 0.5;
-double cam_move_speed = 0.01;
-sf::Vector3f cam_pos(0,-5.0,40.0);
-double cam_rotation = 0.0;
+sf::Vector3f cam_pos(2.0,-17.3,-0.37);
+//sf::Vector3f cam_pos(0.0,-10.0,15.0);
+double cam_y_rotation = 0.0;
+double cam_x_rotation = 90.0;
 int screen_width;
 int screen_height;
 double freq_vals[FRAMES][3];
@@ -56,6 +57,16 @@ void multiply_vector(GLfloat * vec, GLfloat * matrix){
 void draw_1x1_cube(bool outline, GLfloat color[]){
     glInterleavedArrays(GL_N3F_V3F,0,cube_top_face);
     glEnable(GL_COLOR_MATERIAL);
+    glPushMatrix();
+    GLfloat curr_matrix[16];
+    glGetFloatv(GL_MODELVIEW_MATRIX,curr_matrix);
+    GLfloat pos_vector[3] = {0.0,0.0,0.0};
+    multiply_vector(pos_vector,curr_matrix);
+    double dist = sqrt(pos_vector[0]*pos_vector[0]+pos_vector[1]*pos_vector[1]+pos_vector[2]*pos_vector[2]);
+    if (dist < 3.0){
+        double scale_val = (dist*dist)/9.0;
+        glScalef(scale_val,scale_val,scale_val);
+    }
     for (int j = 0; j < 1 || (outline && j < 2); j++){
         glPushMatrix();
         if (j==1) {
@@ -81,6 +92,7 @@ void draw_1x1_cube(bool outline, GLfloat color[]){
         }
         glPopMatrix();
     }
+    glPopMatrix();
 }
 
 enum CubeStage {
@@ -132,6 +144,12 @@ void draw_cube_vector_2(std::vector<std::pair<int,int>> spiral, bool rotate = fa
     }
 }
 
+struct KaleidoState {
+    sf::Vector2f tex_center = sf::Vector2f(0.5,0.5);
+    double tex_radius = 0.5;
+    double tex_rotation = 0.0;
+};
+
 class KaleidofloorTile {
 private:
     int divisions = 6;
@@ -177,8 +195,8 @@ public:
         GLfloat * vertices = (GLfloat *)malloc(8*num_vertices*sizeof(GLfloat));
         GLuint * indices = (GLuint *)malloc(3*num_triangles*sizeof(GLuint));
         //point 0
-        vertices[0] = 0.5;
-        vertices[1] = 0.5;
+        vertices[0] = 0.0;
+        vertices[1] = 0.0;
         vertices[2] = 0.0;
         vertices[3] = 1.0;
         vertices[4] = 0.0;
@@ -186,8 +204,8 @@ public:
         vertices[6] = 0.0;
         vertices[7] = 0.0;
         //point 1
-        vertices[8] = 0.5+0.25*cos(M_PI/(double)divisions);
-        vertices[9] = 0.5;
+        vertices[8] = cos(M_PI/(double)divisions);
+        vertices[9] = 0.0;
         vertices[10] = 0.0;
         vertices[11] = 1.0;
         vertices[12] = 0.0;
@@ -195,8 +213,8 @@ public:
         vertices[14] = 0.0;
         vertices[15] = 0.0;
         //point 2
-        vertices[16] = 0.5+0.25*cos(M_PI/(double)divisions);
-        vertices[17] = 0.5-0.25*sin(M_PI/(double)divisions);
+        vertices[16] = cos(M_PI/(double)divisions);
+        vertices[17] = -sin(M_PI/(double)divisions);
         vertices[18] = 0.0;
         vertices[19] = 1.0;
         vertices[20] = 0.0;
@@ -255,7 +273,8 @@ public:
         glColor3f(1.0,1.0,1.0);
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         glEnable(GL_TEXTURE_2D);
-        sf::Texture::bind(&floor_texture);
+        sf::Texture::bind(&kaleido_source_texture->getTexture());
+        //sf::Texture::bind(&floor_texture);
         glInterleavedArrays(GL_T2F_N3F_V3F,0,curr_vertices);
         for (int i = 0; i < divisions; i++){
             glPushMatrix();
@@ -272,7 +291,7 @@ public:
     void setBurstLevel(double new_burst){
         burst_level = new_burst;
     }
-    void update(){
+    void update(struct KaleidoState * state){
         //burst_level = sin(double(frame)*M_PI/280.0);
         for (int i = 0; i < num_vertices; i++){
             for (int j = 2; j < 8; j++){
@@ -296,8 +315,8 @@ public:
                 }
             }
             
-            curr_vertices[i*8] = base_vertices[i*8] + 0.1*sin((double)frame*M_PI/980.0) + 0.1*cos((double)frame*M_PI/560.0);
-            curr_vertices[i*8+1] = base_vertices[i*8+1] + 0.1*sin((double)frame*M_PI/420.0) + 0.1*cos((double)frame*M_PI/1540.0);
+            curr_vertices[i*8] = state->tex_center.x + state->tex_radius * (base_vertices[i*8]*cos(state->tex_rotation) - base_vertices[i*8+1]*sin(state->tex_rotation));
+            curr_vertices[i*8+1] = state->tex_center.y + state->tex_radius * (base_vertices[i*8+1]*sin(state->tex_rotation) + base_vertices[i*8+1]*cos(state->tex_rotation));
         }
         burst_level = burst_level - 0.1;
         //correct normals
@@ -308,10 +327,14 @@ class HexFloor {
 private:
     int num_layers;
     double radius = HEX_RADIUS;
+    struct KaleidoState state;
     std::map<std::pair<int,int>,KaleidofloorTile *> ** layers;
     float internal_t = 0;
+    double kaleido_t = 0.0;
 public:
     void init(int new_num_layers = 7){
+        state.tex_radius = 4.0;
+        state.tex_center = sf::Vector2f(0.0,0.0);
         num_layers = new_num_layers;
         layers = (std::map<std::pair<int,int>,KaleidofloorTile *> **)malloc(num_layers*sizeof(std::map<std::pair<int,int>,KaleidofloorTile *> *));
         for (int i = 0; i < num_layers; i++){
@@ -335,9 +358,13 @@ public:
         return layers;
     }
     void update(){
+        kaleido_t += freq_vals[frame][2]/120.0;
+        //state.tex_center.x += 0.001;
+        //state.tex_center.x = 0.5 + 0.2 * sin(kaleido_t * M_PI/60.0);
+        //state.tex_center.y = 0.5 + 0.2 * cos(kaleido_t * M_PI/60.0);
         for (int i = 0; i < num_layers; i++){
             for (std::map<std::pair<int,int>,KaleidofloorTile *>::iterator iter = layers[i]->begin(); iter != layers[i]->end(); iter++){
-                (*iter).second->update();
+                (*iter).second->update(&state);
             }
         }
         internal_t += freq_vals[frame][0];
@@ -349,7 +376,7 @@ public:
         int trigger_frame;
         for (int i = 0; i < num_layers; i++){
             glPushMatrix();
-            if (frame < 380) glTranslatef(0.0,(2.0*(sin(frame*M_PI/380.0))*sin((i*30 + internal_t)*M_PI/200.0)),0.0);
+            //if (frame < 380) glTranslatef(0.0,(2.0*(sin(frame*M_PI/380.0))*sin((i*30 + internal_t)*M_PI/200.0)),0.0);
             closest_frame = 42;
             for (int trig = 0; trig < 21; trig++){
                 if (i < cube_triggers[trig*2+1]){
@@ -381,6 +408,7 @@ private:
     std::vector<std::pair<int,int>> spirals[6];
     std::vector<std::pair<int,int>>::iterator iters[6];
     double stage = 0.0;
+    struct KaleidoState state;
 public:
     void init(){
         for (int x = -12; x <= 12; x++){
@@ -407,7 +435,7 @@ public:
             tiles[(*iters[i])]->setBurstLevel(stage);
         }
         for (std::map<std::pair<int,int>,KaleidofloorTile *>::iterator iter = tiles.begin(); iter != tiles.end(); iter++){
-            (*iter).second->update();
+            (*iter).second->update(&state);
         }
         if (stage == 1.0){
             stage = 0.0;
@@ -806,7 +834,100 @@ Cube_Tube cube_tube;*/
 
 GLfloat light_magnitude = 0.0;
 
+class SourceController{
+private:
+    int divisions;
+    GLfloat * vert_tex_array;
+    GLfloat * vert_tex_array_buf;
+    GLuint * indices;
+public:
+    SourceController(int new_divisions = 4){
+        divisions = new_divisions;
+        vert_tex_array = (GLfloat *)malloc(5*(divisions+1)*(divisions+1)*sizeof(GLfloat));
+		vert_tex_array_buf = (GLfloat *)malloc(5*(divisions+1)*(divisions+1)*sizeof(GLfloat));
+        int ind = 0;
+        for (int x = 0; x < divisions+1; x++){
+			for (int y = 0; y < divisions+1; y++){
+				ind = 5*(y*(divisions+1)+x);
+				vert_tex_array[ind] = (float)x/(float)divisions;
+				vert_tex_array[ind+1] = (float)(divisions-y)/(float)divisions; //we gotta flip it to draw it the way we want
+				vert_tex_array[ind+2] = (float)x/(float)divisions;
+				vert_tex_array[ind+3] = (float)y/(float)divisions;
+				vert_tex_array[ind+4] = 0.0;
+			}
+		}
+        indices = (GLuint *)malloc(4*(divisions)*(divisions)*sizeof(GLuint));
+        for (int x = 0; x < divisions; x++){
+			for (int y= 0; y < divisions; y++){
+				ind = 4*(y*divisions+x);
+				indices[ind] = y*(divisions+1)+x;
+				indices[ind+1] = (y+1)*(divisions+1)+x;
+				indices[ind+2] = (y+1)*(divisions+1)+x+1;
+				indices[ind+3] = y*(divisions+1)+x+1;
+			}
+		}
+		for (int i = 0; i < 5*(divisions+1)*(divisions+1); i++){
+			vert_tex_array_buf[i]=vert_tex_array[i];
+		}
+        printf("done.\n");
+    }
+    void update(){
+        float x_diff;
+        float y_diff;
+        int ind;
+        for (int x = 0; x < divisions + 1; x++){
+            for (int y = 0; y < divisions + 1; y++){
+                ind = 5*(y*(divisions+1)+x);
+                if (vert_tex_array[ind+2] != 0 && vert_tex_array[ind+2] != 1) vert_tex_array_buf[ind+2] = vert_tex_array[ind+2] + (0.2/(double)divisions)*sin((double)(frame + vert_tex_array_buf[ind+3]*840.0)*M_PI/140.0);
+                vert_tex_array_buf[ind+3] = vert_tex_array[ind+3]  + (0.2/(double)divisions)*cos((double)(frame + vert_tex_array_buf[ind+2]*560.0)*M_PI/280.0);
+            }
+        }
+    }
+   void draw_source(){
+        glDisable(GL_LIGHTING);
+        glEnable(GL_TEXTURE_2D);
+        glInterleavedArrays(GL_T2F_V3F,0,vert_tex_array_buf);
+        sf::Texture::bind(&floor_texture);
+        glDrawElements(GL_QUADS,4*divisions*divisions,GL_UNSIGNED_INT,indices);
+        /*double divisions = 4.0;
+        for (double x = 0; x < divisions; x+=1.0){
+            for (double y = 0; y < divisions; y += 1.0){
+                glBegin(GL_QUADS);
+                glTexCoord2f(x/divisions,1.0-y/divisions);
+                glVertex2f(x/divisions,y/divisions);
+                glTexCoord2f(x/divisions,1.0-(y+1.0)/divisions);
+                glVertex2f(x/divisions,(y+1)/divisions);
+                glTexCoord2f((x+1)/divisions,1.0-(y+1.0)/divisions);
+                glVertex2f((x+1)/divisions,(y+1)/divisions);
+                glTexCoord2f((x+1)/divisions,1.0-y/divisions);
+                glVertex2f((x+1)/divisions,(y+1)/divisions);
+                glEnd();
+            }
+        }*/
+        sf::Texture::bind(NULL);
+        glDisable(GL_TEXTURE_2D);
+        glEnable(GL_LIGHTING);
+    }
+ 
+};
+
+SourceController * source_controller;
+
 void display(){
+    window->setActive(false);
+	kaleido_source_texture->setActive(true);
+	glViewport(0.0,0.0,kaleido_source_texture->getSize().x,kaleido_source_texture->getSize().y);
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0,1.0,0.0,1.0,-100.0,100.0);
+    glMatrixMode(GL_MODELVIEW);
+    source_controller->draw_source();
+    kaleido_source_texture->display();
+    kaleido_source_texture->setRepeated(true);
+    window->setActive(true);
+    
+	//glViewport(0.0,0.0,screen_width,screen_height);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glMatrixMode(GL_PROJECTION);
     
@@ -821,7 +942,10 @@ void display(){
     
     
     //MODIFY THE CAMERA HERE
-    //glRotatef(cam_rotation,0.0,1.0,0.0);
+    
+    
+    glRotatef(cam_y_rotation,0.0,1.0,0.0);
+    glRotatef(cam_x_rotation,1.0,0.0,0.0);
     glTranslatef(-cam_pos.x,-cam_pos.y,-cam_pos.z);
     /*if (frame < 240){
         cam_pos.z += 24.0/240.0;
@@ -854,14 +978,13 @@ void display(){
 
 void update(){
     frame++;
+    source_controller->update();
     hex_floor.update();
-    //kaleido_floor.update();
-    //cam_pos += cam_move_speed;
-    //cam_rotation += cam_rotate_speed;
 }
 
 void init(){
     floor_texture.loadFromFile("floor2.png");
+    floor_texture.setRepeated(true);
 #if MIPMAP == true
     if (floor_texture.generateMipmap()){
         printf("generated mipmap\n");
@@ -893,7 +1016,6 @@ void init(){
         }
     }
     glClearColor(0.0,0.0,0.0,1.0);
-	glViewport(0.0,0.0,screen_width,screen_height);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glEnable(GL_CCW);
@@ -908,6 +1030,9 @@ void init(){
     //kaleido_floor.init();
     assign_cubes();
     link_floor_and_cubes();
+    source_controller = new SourceController(16);
+    kaleido_source_texture = new sf::RenderTexture();
+	kaleido_source_texture->create(2031,2031,true);
 }
 
 int main(int argc, char **argv) {
