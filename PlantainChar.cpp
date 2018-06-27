@@ -14,8 +14,8 @@
 #include <string.h>
 #include <algorithm>
 
-#define SCREENCAP 0
-#define MIPMAP false
+#define SCREENCAP 3652
+#define MIPMAP true
 #define SCREEN_SIZE 1.0
 #define PORT 9400
 #define FRAMES 3592
@@ -33,8 +33,10 @@ int screen_width;
 int screen_height;
 double freq_vals[FRAMES][3];
 bool program_done = false;
-int frame;
+int frame = -60;
+//int frame = 2250;
 sf::Texture floor_texture;
+sf::Texture title_texture;
 
 const GLfloat cube_top_face[] = {0.0,1.0,0.0,-0.5,0.5,-0.5,0.0,1.0,0.0,-0.5,0.5,0.5,0.0,1.0,0.0,0.5,0.5,0.5,0.0,1.0,0.0,0.5,0.5,-0.5};
 const GLuint cube_indices[] = {0,1,2,3};
@@ -292,7 +294,6 @@ public:
         burst_level = new_burst;
     }
     void update(struct KaleidoState * state){
-        //burst_level = sin(double(frame)*M_PI/280.0);
         for (int i = 0; i < num_vertices; i++){
             for (int j = 2; j < 8; j++){
                 curr_vertices[i*8+j] = base_vertices[i*8+j];
@@ -300,13 +301,13 @@ public:
             if (burst_level > 0.0){
                 sf::Vector3f diff_vec(base_vertices[i*8+5],base_vertices[i*8+6],base_vertices[i*8+7]);
                 double diff = sqrt(diff_vec.x*diff_vec.x+diff_vec.y*diff_vec.y+diff_vec.z*diff_vec.z);
-                double rot_val = (radius*0.66)*burst_level - diff;
+                double rot_val = (radius*burst_level*0.66)*burst_level - diff;
                 if (rot_val > 0.0){
                     glPushMatrix();
                     glLoadIdentity();
-                    glTranslatef(rot_val,-rot_val/3.0,0.0);
+                    glTranslatef(radius*burst_level*0.66,-radius*burst_level*0.66/2.0,0.0);
                     glRotatef(-45.0*rot_val,0.0,0.0,1.0);
-                    glTranslatef(-rot_val,rot_val/3.0,0.0);
+                    glTranslatef(-radius*burst_level*0.66,radius*burst_level*0.66/2.0,0.0);
                     GLfloat curr_matrix[16];
                     glGetFloatv(GL_MODELVIEW_MATRIX,curr_matrix);
                     multiply_vector(&curr_vertices[i*8+5],curr_matrix);
@@ -316,7 +317,7 @@ public:
             }
             
             curr_vertices[i*8] = state->tex_center.x + state->tex_radius * (base_vertices[i*8]*cos(state->tex_rotation) - base_vertices[i*8+1]*sin(state->tex_rotation));
-            curr_vertices[i*8+1] = state->tex_center.y + state->tex_radius * (base_vertices[i*8+1]*sin(state->tex_rotation) + base_vertices[i*8+1]*cos(state->tex_rotation));
+            curr_vertices[i*8+1] = state->tex_center.y + state->tex_radius * (base_vertices[i*8]*sin(state->tex_rotation) + base_vertices[i*8+1]*cos(state->tex_rotation));
         }
         burst_level = burst_level - 0.1;
         //correct normals
@@ -358,10 +359,54 @@ public:
         return layers;
     }
     void update(){
-        kaleido_t += freq_vals[frame][2]/120.0;
-        //state.tex_center.x += 0.001;
-        //state.tex_center.x = 0.5 + 0.2 * sin(kaleido_t * M_PI/60.0);
-        //state.tex_center.y = 0.5 + 0.2 * cos(kaleido_t * M_PI/60.0);
+        float ratio;
+        double start_tex_radius;
+        double end_tex_radius;
+        double start_tex_rotation;
+        double end_tex_rotation;
+        sf::Vector2f start_tex_center;
+        sf::Vector2f end_tex_center;
+        if (frame >= 34 && frame < 340){
+            ratio = (float)(frame - 34)/(float)(340-34);
+            start_tex_radius = 4.0;
+            end_tex_radius = 0.5;
+            start_tex_center = sf::Vector2f(0.0,0.0);
+            end_tex_center = sf::Vector2f(0.5,0.5);
+            start_tex_rotation = 0.0;
+            end_tex_rotation = M_PI/2.0;
+        }
+        else if (frame >= 340 && frame < 860){
+            ratio = (float)(frame-340)/(float)(420);
+            start_tex_radius = 0.5;
+            end_tex_radius = 0.4;
+            start_tex_center = sf::Vector2f(0.5,0.5);
+            end_tex_center = sf::Vector2f(0.5,0.5);
+            start_tex_rotation = M_PI/2.0;
+            end_tex_rotation = 2.0*M_PI;
+        }
+        else if (frame >= 860 && frame < 1600.0){
+            ratio = (float)(frame-860)/(float)(1600.0-860.0);
+            start_tex_radius = 0.4;
+            end_tex_radius = 0.05;
+            start_tex_center = sf::Vector2f(0.5,0.5);
+            end_tex_center = sf::Vector2f(0.5,0.5);
+            start_tex_rotation = 2.0*M_PI;
+            end_tex_rotation = -2.0*M_PI;
+        }
+        else {
+            ratio = 0.0;
+            start_tex_radius = state.tex_radius;
+            start_tex_center = state.tex_center;
+            start_tex_rotation = state.tex_rotation;
+        }
+        state.tex_radius = start_tex_radius + ratio*(end_tex_radius-start_tex_radius);
+        state.tex_center = start_tex_center + ratio*(end_tex_center-start_tex_center);
+        
+        if (frame >= 860 && frame < 1600.0){
+            state.tex_center = start_tex_center + (float)(ratio*0.25)*sf::Vector2f((float)sin(ratio*M_PI*9.0),(float)cos(ratio*M_PI*14.0));
+        }
+        state.tex_rotation = start_tex_rotation + ratio*(end_tex_rotation-start_tex_rotation);
+        
         for (int i = 0; i < num_layers; i++){
             for (std::map<std::pair<int,int>,KaleidofloorTile *>::iterator iter = layers[i]->begin(); iter != layers[i]->end(); iter++){
                 (*iter).second->update(&state);
@@ -372,6 +417,7 @@ public:
     void draw(){
         glPushMatrix();
         glTranslatef(0.0,-18.0,0.0);
+        
         int closest_frame;
         int trigger_frame;
         for (int i = 0; i < num_layers; i++){
@@ -458,7 +504,81 @@ public:
 HexFloor hex_floor;
 Kaleidofloor kaleido_floor;
 
+class Splitter {
+private:
+    int split_frame;
+    Splitter * next = NULL;
+    KaleidofloorTile * face;
+    KaleidoState state;
+    double internal_t;
+    double scale_fac = 0.0;
+    double radius = 1.0;
+    int depth;
+public:
+    void init(int curr_frame = 2414, int new_depth = 0){
+        depth = new_depth;
+        split_frame = curr_frame + 42*4;
+        face = new KaleidofloorTile();
+        face->init(4,2.0,3);
+        state.tex_center = sf::Vector2f(0.5,0.5);
+        state.tex_radius = 0.1;
+        state.tex_rotation = 0.0;
+    }
+    void draw(){
+        glPushMatrix();
+        if (split_frame == 2582){
+            glRotatef(30.0,1.0,0.0,0.0);
+            glRotatef(45.0,0.0,1.0,0.0);
+        }
+        
+        for (int i = 0; i < 6; i++){
+            glPushMatrix();
+            glScalef(scale_fac,scale_fac,scale_fac);
+            if (i == 1){
+                glRotatef(180.0,1.0,0.0,0.0);
+                glRotatef(180.0,0.0,1.0,0.0);
+            }
+            if (i > 1){
+                
+                glRotatef(90.0*i,0.0,1.0,0.0);
+                glRotatef(90.0,1.0,0.0,0.0);
+            }
+            glTranslatef(0.0,SQRT_2,0.0);
+            face->draw();
+            glTranslatef(0.0,internal_t/42.0,0.0);
+            if (next != NULL){
+                glScalef(0.7,0.7,0.7);
+                next->draw();
+            }
+            glPopMatrix();
+        }
+        glPopMatrix();
+    }
+    void update(){
+        scale_fac += 1.0/168.0;
+        if (scale_fac > 1.0) scale_fac = 1.0;
+        if (frame == split_frame-42){
+            if (depth < 4){
+                next = new Splitter();
+                next->init(frame,depth+1);
+            }
+        }
+        int closest_frame = 42;
+        if (abs(split_frame - 42 -frame) < 42){
+            closest_frame = split_frame - 42 - frame;
+        }
+        if (next != NULL){
+            
+            internal_t += 1.0;
+            next->update();
+        }
+        if (depth < 4) face->setBurstLevel(cos((double)closest_frame*M_PI/84.0));
+        face->update(&state);
+        state.tex_rotation += M_PI/168.0;
+    }
+};
 
+Splitter base_splitter;
 
 class CubeController {
 private:
@@ -472,6 +592,8 @@ private:
     double inter_angle;
     double end_angle;
     double bump_ratio = 0.0;
+    double rot_val = 0.0;
+    double scale_bonus = 0.0;
 public:
     CubeController(){
         final_target_pos = sf::Vector3f(0,0,0);
@@ -547,58 +669,112 @@ public:
         else {
             total_ratio = (float)(frame-start_frame)/(float)(end_frame-start_frame);
         }
-        glPushMatrix();
-        double dist = sqrt(pos.x*pos.x+pos.y*pos.y+pos.z*pos.z);
-        //double add_bump_ratio = (dist == 0) ? 0.0 : (freq_vals[frame][0]/(32.0+dist*dist*dist))/dist;
-        //bump_ratio = bump_ratio + add_bump_ratio;
-        glTranslatef(pos.x*(1.0+bump_ratio),pos.y*(1.0+bump_ratio),pos.z*(1.0+bump_ratio));
-        bump_ratio = bump_ratio * 0.5;
-        float val = pos.x+pos.y-pos.z;
-        
-        GLfloat color[] = {freq_vals[frame][2]/128.0,0.5-0.5*cos((frame+val)*M_PI/30.0),1.0-freq_vals[frame][2]/128.0};
-        glRotatef(360.0*total_ratio*total_ratio,1.0,1.0,1.0);
-        float scale_val = 1.0-freq_vals[frame][1]/256.0;
-        glScalef(scale_val,scale_val,scale_val);
-        draw_1x1_cube(true,color);
-        glPopMatrix();
-        
-        /*else if (frame < end_frame){
-            float ratio = (float)(frame-inter_frame)/(float)(end_frame-inter_frame);
-            float wave_ratio = 0.5 - 0.5 * cos(ratio*M_PI);
-            sf::Vector3f pos;
-            pos = inter_pos + ratio*(final_target_pos-inter_pos);
+        if (frame < 1765){
             glPushMatrix();
-            glRotatef(wave_ratio*720.0*(layer%2 ? -1.0 : 1.0),0.0,1.0,0.0);
-            glTranslatef(pos.x*wave_ratio,pos.y,pos.z*wave_ratio);
-            glTranslatef(wave_ratio*0.5*cos((final_target_pos.z*3.5+frame)*M_PI/28.0),wave_ratio*0.5*sin((sqrt(final_target_pos.x*final_target_pos.x+final_target_pos.z*target_pos.z)+frame+target_pos.y)*M_PI/28.0),0.0);
+            double dist = sqrt(pos.x*pos.x+pos.y*pos.y+pos.z*pos.z);
+            glTranslatef(pos.x*(1.0+bump_ratio),pos.y*(1.0+bump_ratio),pos.z*(1.0+bump_ratio));
+            bump_ratio = bump_ratio * 0.5;
+            float val = pos.x+pos.y-pos.z;
             
-            glScalef(0.4+ratio*0.2,0.4+ratio*0.2,0.4+ratio*0.2);
-            double dist = sqrt(target_pos.x*target_pos.x+target_pos.y*target_pos.y+target_pos.z*target_pos.z);
-            double dist_modified = (target_pos.x+dist)*14.0 + frame;
-            double dist_val = 1.2*wave_ratio*sin(dist_modified*M_PI/28.0)-0.2;
-            if (dist_val > 0.0){
-                glRotatef(dist_val*360.0,target_pos.x,target_pos.y,target_pos.z);
+            GLfloat color[] = {freq_vals[frame][2]/128.0,0.5-0.5*cos((frame+val)*M_PI/30.0),1.0-freq_vals[frame][2]/128.0};
+            glRotatef(360.0*total_ratio*total_ratio,1.0,1.0,1.0);
+            float scale_val = 1.0-freq_vals[frame][1]/256.0;
+            if (frame > 1600){
+                double color_ratio = (frame - 1600)/(double)(1765-1600);
+                color[0] = color[0] + color_ratio*(1.0-color[0]);
+                color[1] = color[1] + color_ratio*(1.0-color[1]);
+                color[2] = color[2] + color_ratio*(1.0-color[2]);
+                scale_val = scale_val + color_ratio*(0.6-scale_val);
             }
-            GLfloat color[] = {0.5+0.5*dist_val,1.0-abs(dist_val),1.0};
+            
+            if ((frame-start_frame) < 28.0){
+                scale_val = scale_val * (double)(frame-start_frame)/28.0;
+            }
+            glScalef(scale_val,scale_val,scale_val);
+            
             draw_1x1_cube(true,color);
             glPopMatrix();
         }
         else{
+            pos = final_target_pos;
             glPushMatrix();
-            glTranslatef(target_pos.x,target_pos.y,target_pos.z);
-            glTranslatef(0.5*cos((target_pos.z*3.5+frame)*M_PI/28.0),0.5*sin((sqrt(target_pos.x*target_pos.x+target_pos.z*target_pos.z)+frame+target_pos.y)*M_PI/28.0),0.0);
-            
-            glScalef(0.6,0.6,0.6);
-            double dist = sqrt(target_pos.x*target_pos.x+target_pos.y*target_pos.y+target_pos.z*target_pos.z);
-            double dist_modified = (target_pos.x+dist)*14.0 + frame;
-            double dist_val = 1.2*sin(dist_modified*M_PI/28.0)-0.2;
-            if (dist_val > 0.0){
-                glRotatef(dist_val*360.0,target_pos.x,target_pos.y,target_pos.z);
+            if (frame >= 2267){
+                double rot_ratio = (double)(frame-2267)/(double)(2414-2267);
+                if (rot_ratio > 1.0){
+                    rot_ratio = 1.0;
+                }
+                glRotatef(30.0*rot_ratio,1.0,0.0,0.0);
+                glRotatef(45.0*rot_ratio,0.0,1.0,0.0);
+                
             }
-            GLfloat color[] = {0.5+0.5*dist_val,1.0-abs(dist_val),1.0};
+            double dist = get_dist();
+            double dist_val = dist + pos.x*7.0 + pos.y*5.0;
+            double boom_ratio = 1.0;
+            if (frame <= 1920){
+                boom_ratio = 1.5 - 0.5*cos((float)(frame-1765)*M_PI/(double)((1920-1765)/2.0));
+            }
+            else if (frame <= 2267){
+                double y_ratio = 0.0;
+         
+                double x_ratio = 0.0;
+                if (frame <= 2006){
+                    x_ratio = 0.0;
+                    y_ratio = (double)(frame - 1920)/(double)(2006-1920);
+                }
+                else if (frame <= 2093){
+                    x_ratio = (double)(frame - 2006)/(double)(2093-2006);
+                    y_ratio = 1.0;
+                }
+                else if (frame <= 2181){
+                    x_ratio = 1.0;
+                    y_ratio = 1.0 - (double)(frame - 2093)/(double)(2181-2093);
+                }
+                else {
+                    x_ratio = 1.0 - (double)(frame - 2181)/(double)(2267-2181);
+                    y_ratio = 0.0;
+                    
+                }
+                if ((int)pos.y % 2 == 0) y_ratio = -y_ratio;
+                if ((int)pos.x % 2 == 0) x_ratio = -x_ratio;
+                pos = sf::Vector3f(pos.x*cos(y_ratio*M_PI/4.0)-pos.z*sin(y_ratio*M_PI/4.0),pos.y,pos.x*sin(y_ratio*M_PI/4.0)+pos.z*cos(y_ratio*M_PI/4.0));
+                pos = sf::Vector3f(pos.x,pos.y*cos(x_ratio*M_PI/4.0)-pos.z*sin(x_ratio*M_PI/4.0),pos.y*sin(x_ratio*M_PI/4.0)+pos.z*cos(x_ratio*M_PI/4.0));
+                
+            }
+            else {
+                boom_ratio = 1.0;
+            }
+            scale_bonus = scale_bonus * 0.7 + 0.3*freq_vals[frame][0]/128.0;
+            if (frame > 2267){
+                boom_ratio = pow(1.0 + ((double)(frame-2267)/336.0) * (9.0 - dist)/2.0,2.0);
+            }
+            glTranslatef(boom_ratio*pos.x,boom_ratio*pos.y,boom_ratio*pos.z);
+            
+            if (frame > 2267){
+                rot_val = rot_val / (boom_ratio);
+            }
+            else {
+                rot_val = rot_val + freq_vals[frame][2]/60.0;
+                if (rot_val > 360.0){
+                    rot_val = rot_val - 360.0;
+                }
+            }
+            if (frame <= 2267)
+                glScalef(0.5+scale_bonus*0.4,0.5+scale_bonus*0.4,0.5+scale_bonus*0.4);
+            else {
+                double scale_val_now = (0.5+scale_bonus*0.4)*1.0/(boom_ratio);
+                if (scale_val_now < 0.01){
+                    glPopMatrix();
+                    return;
+                }
+                else {
+                    glScalef(scale_val_now,scale_val_now,scale_val_now);
+                }
+            }
+            glRotatef(rot_val,pos.x,pos.y,pos.z);
+            GLfloat color[] = {0.5+0.5*cos((double)(dist_val+frame)*M_PI/168.0),1.0,0.5+0.5*sin((double)(dist_val+frame)*M_PI/168.0)};
             draw_1x1_cube(true,color);
             glPopMatrix();
-            */
+        }
     }
 };
 
@@ -840,8 +1016,11 @@ private:
     GLfloat * vert_tex_array;
     GLfloat * vert_tex_array_buf;
     GLuint * indices;
+    sf::Texture * my_tex;
+    double amplitude_bonus = 0.0;
 public:
     SourceController(int new_divisions = 4){
+        my_tex = &floor_texture;
         divisions = new_divisions;
         vert_tex_array = (GLfloat *)malloc(5*(divisions+1)*(divisions+1)*sizeof(GLfloat));
 		vert_tex_array_buf = (GLfloat *)malloc(5*(divisions+1)*(divisions+1)*sizeof(GLfloat));
@@ -875,20 +1054,48 @@ public:
         float x_diff;
         float y_diff;
         int ind;
+        double amplitude = 0.2;
+        
+        if (frame > 0 && frame <= 380.0){
+            amplitude_bonus = amplitude_bonus * 0.3 + 0.7 * freq_vals[frame][2]/64.0;
+            if (frame > 340.0){
+                amplitude_bonus = amplitude_bonus * (1.0-(frame-340)/(40.0));
+            }
+        }
+        else {
+            amplitude_bonus = 0.0;
+        }
+        amplitude = amplitude + amplitude_bonus;
         for (int x = 0; x < divisions + 1; x++){
             for (int y = 0; y < divisions + 1; y++){
                 ind = 5*(y*(divisions+1)+x);
-                if (vert_tex_array[ind+2] != 0 && vert_tex_array[ind+2] != 1) vert_tex_array_buf[ind+2] = vert_tex_array[ind+2] + (0.2/(double)divisions)*sin((double)(frame + vert_tex_array_buf[ind+3]*840.0)*M_PI/140.0);
-                vert_tex_array_buf[ind+3] = vert_tex_array[ind+3]  + (0.2/(double)divisions)*cos((double)(frame + vert_tex_array_buf[ind+2]*560.0)*M_PI/280.0);
+                if (vert_tex_array[ind+2] != 0 && vert_tex_array[ind+2] != 1) vert_tex_array_buf[ind+2] = vert_tex_array[ind+2] + (amplitude/(double)divisions)*sin((double)(frame + vert_tex_array_buf[ind+3]*840.0)*M_PI/42.0);
+                vert_tex_array_buf[ind+3] = vert_tex_array[ind+3]  + (amplitude/(double)divisions)*cos((double)(frame + vert_tex_array_buf[ind+2]*560.0)*M_PI/42.0);
             }
         }
     }
    void draw_source(){
+        glEnable(GL_COLOR_MATERIAL);
+        double color_scale = 1.0;
+        if (frame < 45.0){
+            color_scale = (frame+45.0)/115.0;
+        }
+        glColor3f(color_scale,color_scale,color_scale);
         glDisable(GL_LIGHTING);
         glEnable(GL_TEXTURE_2D);
         glInterleavedArrays(GL_T2F_V3F,0,vert_tex_array_buf);
-        sf::Texture::bind(&floor_texture);
+        glEnable(GL_COLOR_MATERIAL);
+        sf::Texture::bind(my_tex);
         glDrawElements(GL_QUADS,4*divisions*divisions,GL_UNSIGNED_INT,indices);
+        if (frame < 45.0){
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
+            sf::Texture::bind(&title_texture);
+            glColor4f(1.0,1.0,1.0,0.5+0.5*cos((double)(frame+3)*M_PI/57.0));
+            glDrawElements(GL_QUADS,4*divisions*divisions,GL_UNSIGNED_INT,indices);
+            glBlendFunc(GL_ONE,GL_ZERO);
+            glDisable(GL_BLEND);
+        }
         /*double divisions = 4.0;
         for (double x = 0; x < divisions; x+=1.0){
             for (double y = 0; y < divisions; y += 1.0){
@@ -943,9 +1150,8 @@ void display(){
     
     //MODIFY THE CAMERA HERE
     
-    
-    glRotatef(cam_y_rotation,0.0,1.0,0.0);
     glRotatef(cam_x_rotation,1.0,0.0,0.0);
+    glRotatef(cam_y_rotation,0.0,1.0,0.0);
     glTranslatef(-cam_pos.x,-cam_pos.y,-cam_pos.z);
     /*if (frame < 240){
         cam_pos.z += 24.0/240.0;
@@ -966,18 +1172,110 @@ void display(){
     glEnable(GL_LIGHT0);
     
     //DISPLAY STUFF HERE
-    hex_floor.draw();
+    if (frame < 1400){
+        hex_floor.draw();
+        
+    }
+    draw_cubes();
+    if (frame >= 2380){
+        base_splitter.draw();
+    }
     //kaleido_floor.draw();
     //glRotatef(frame,1.0,1.0,1.0);
-    draw_cubes();
+    
     
     //GLfloat color[] = {1.0,1.0,1.0};
 	//draw_1x1_cube(true,color);
-    //draw_cube_sphere(7.5);
+    
 }
 
 void update(){
     frame++;
+    double start_x_rotation;
+    double end_x_rotation;
+    double start_y_rotation;
+    double end_y_rotation;
+    sf::Vector3f start_cam_pos;
+    sf::Vector3f end_cam_pos;
+    float ratio;
+    if (frame >= 34 && frame < 340){
+        ratio = (float)(frame - 34)/(float)(340-34);
+        start_x_rotation = 90.0;
+        end_x_rotation = 30.0;
+        start_cam_pos = sf::Vector3f(2.0,-17.3,-0.37);
+        end_cam_pos = sf::Vector3f(0.0,-16.0,4.0);
+        start_y_rotation = 0;
+        end_y_rotation = 0;
+    }
+    else if (frame >= 340 && frame < 1052){
+        ratio = (float)(frame - 340)/(float)(1052-340);
+        start_x_rotation = 30.0;
+        end_x_rotation = 15.0;
+        start_cam_pos = sf::Vector3f(0.0,-16.0,4.0);
+        end_cam_pos = sf::Vector3f(0.0,-6.0,15.0);
+        start_y_rotation = 0;
+        end_y_rotation = 0;
+    }
+    else if (frame >= 1052 && frame <= 1388){
+        ratio = (float)(frame - 1052)/(float)(1388-1052);
+        start_x_rotation = 15.0;
+        end_x_rotation = 0.0;
+        start_cam_pos = sf::Vector3f(0.0,-6.0,15.0);
+        end_cam_pos = sf::Vector3f(0.0,0.0,16.0);
+        start_y_rotation = 0;
+        end_y_rotation = 360.0;
+    }
+    else if (frame > 1388 && frame <= 1556){
+        ratio = (float)(frame - 1388)/(float)(1556-1388);
+        start_x_rotation = 0.0;
+        end_x_rotation = 0.0;
+        start_cam_pos = sf::Vector3f(0.0,0.0,16.0);
+        end_cam_pos = sf::Vector3f(0.0,0.0,21.0);
+        start_y_rotation = 0.0;
+        end_y_rotation = 0.0;
+    }
+    else if (frame > 1933 && frame <= 2267){
+        ratio = (float)(frame - 1933)/(float)(2267-1933);
+        start_x_rotation = 0.0;
+        end_x_rotation = 0.0;
+        start_cam_pos = sf::Vector3f(0.0,0.0,21.0);
+        end_cam_pos = sf::Vector3f(0.0,0.0,-4.0);
+        start_y_rotation = 0.0;
+        end_y_rotation = 0.0;
+    }
+    else if (frame > 2267 && frame <= 2414){
+        ratio = (float)(frame - 2267)/(float)(2414-2267);
+        start_x_rotation = 0.0;
+        end_x_rotation = 0.0;
+        start_cam_pos = sf::Vector3f(0.0,0.0,-4.0);
+        end_cam_pos = sf::Vector3f(0.0,0.0,4.0);
+        start_y_rotation = 0.0;
+        end_y_rotation = -360.0;
+    }
+    else if (frame > 2414){
+        ratio = (float)(frame - 2414)/(float)(336.0);
+        start_x_rotation = 0.0;
+        end_x_rotation = 0.0;
+        start_cam_pos = sf::Vector3f(0.0,0.0,4.0);
+        end_cam_pos = sf::Vector3f(0.0,0.0,21.0);
+        start_y_rotation = 0.0;
+        end_y_rotation = 0.0;
+    }
+    else {
+        ratio = 0.0;
+        start_x_rotation = cam_x_rotation;
+        start_y_rotation = cam_y_rotation;
+        start_cam_pos = cam_pos;
+    }
+    cam_x_rotation = start_x_rotation + ratio*ratio*(end_x_rotation-start_x_rotation);
+    cam_y_rotation = start_y_rotation + ratio*(end_y_rotation-start_y_rotation);
+    cam_pos = start_cam_pos + ratio*end_cam_pos-ratio*start_cam_pos;
+    if (frame >= 1036 && frame <= 1456){
+        cam_pos = sf::Vector3f(sqrt(cam_pos.x*cam_pos.x+cam_pos.z*cam_pos.z)*cos((cam_y_rotation+90.0)*M_PI/180.0),cam_pos.y,sqrt(cam_pos.x*cam_pos.x+cam_pos.z*cam_pos.z)*sin((cam_y_rotation+90.0)*M_PI/180.0));
+    }
+    if (frame >= 2267){
+        base_splitter.update();
+    }
     source_controller->update();
     hex_floor.update();
 }
@@ -985,6 +1283,8 @@ void update(){
 void init(){
     floor_texture.loadFromFile("floor2.png");
     floor_texture.setRepeated(true);
+    title_texture.loadFromFile("title.png");
+    title_texture.setRepeated(true);
 #if MIPMAP == true
     if (floor_texture.generateMipmap()){
         printf("generated mipmap\n");
@@ -1030,10 +1330,13 @@ void init(){
     //kaleido_floor.init();
     assign_cubes();
     link_floor_and_cubes();
-    source_controller = new SourceController(16);
+    source_controller = new SourceController(40);
+    base_splitter.init();
     kaleido_source_texture = new sf::RenderTexture();
 	kaleido_source_texture->create(2031,2031,true);
 }
+
+
 
 int main(int argc, char **argv) {
     screen_height = 720*SCREEN_SIZE;
@@ -1047,13 +1350,17 @@ int main(int argc, char **argv) {
 	window = new sf::RenderWindow(sf::VideoMode(screen_width,screen_height),"Plantain Char",sf::Style::Default, settings);
 	int screenshot_count = 0;
     window->setVerticalSyncEnabled(true);
-
+    clock_t start_time;
+    clock_t stop_time;
+    clock_t start;
+    clock_t stop;
     // activate the window
     window->setActive(true);
     init();
-
+    start_time = clock();
     bool running = true;
     while (running){
+        start = clock();
         // handle events
         sf::Event event;
         while (window->pollEvent(event))
@@ -1088,7 +1395,19 @@ int main(int argc, char **argv) {
                 
             }
         }
+        else if (screenshot_count == SCREENCAP){
+            stop_time = clock();
+            double total_time = double(stop_time-start_time)/CLOCKS_PER_SEC;
+            printf("%f seconds to render %d frames\n~%f seconds per frame",total_time,SCREENCAP,total_time/(double)SCREENCAP);
+            screenshot_count++;
+        }
+        else {
+            stop = clock();
+            double elapsed = double(stop-start)*1000.0/CLOCKS_PER_SEC;
+            if (elapsed < 33) Sleep(33-elapsed);
+        }
     	window->display();
+        
     }
 
 	return 1;
